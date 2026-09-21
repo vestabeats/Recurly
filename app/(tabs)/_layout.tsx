@@ -1,11 +1,12 @@
 import {Tabs, Redirect} from "expo-router";
 import {tabs} from "@/constants/data";
-import {View} from "react-native";
+import {View, Image} from "react-native";
 import { colors, components } from '@/constants/theme'
-import clsx from "clsx";
-import {Image} from "react-native";
+import { clsx } from "clsx";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useAuth } from '@clerk/expo';
+import { useEffect, useRef } from "react";
+import { posthog } from "@/lib/posthog";
 
 const tabBar = components.tabBar;
 
@@ -19,8 +20,34 @@ const TabIcon = ({focused, icon}: TabIconProps) => {
     );
 };
 const TabLayout = () => {
-    const { isSignedIn, isLoaded } = useAuth();
+    const { isSignedIn, isLoaded, userId } = useAuth();
     const insets = useSafeAreaInsets();
+    const identifiedUserId = useRef<string | null>(null);
+
+    useEffect(() => {
+        if (!isLoaded) {
+            return;
+        }
+
+        if (!isSignedIn || !userId) {
+            if (identifiedUserId.current) {
+                posthog?.reset();
+                identifiedUserId.current = null;
+            }
+            return;
+        }
+
+        if (identifiedUserId.current === userId) {
+            return;
+        }
+
+        if (identifiedUserId.current) {
+            posthog?.reset();
+        }
+
+        posthog?.identify(userId);
+        identifiedUserId.current = userId;
+    }, [isLoaded, isSignedIn, userId]);
 
     // Wait for auth to load before rendering anything
     if (!isLoaded) {

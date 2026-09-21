@@ -13,13 +13,12 @@ import SubscriptionCard from "@/components/SubscriptionCard";
 import CreateSubscriptionModal from "@/components/CreateSubscriptionModal";
 import {useState, useMemo} from "react";
 import { useUser } from '@clerk/expo';
-import { usePostHog } from 'posthog-react-native';
+import { posthog } from "@/lib/posthog";
 import { useSubscriptionStore } from "@/lib/subscriptionStore";
 const SafeAreaView = styled(RNSafeAreaView);
 
 export default function App() {
     const { user } = useUser();
-    const posthog = usePostHog();
     const [expandedSubscriptionId, setExpandedSubscriptionId] = useState<string | null>(null);
     const [isModalVisible, setIsModalVisible] = useState(false);
     const { subscriptions, addSubscription } = useSubscriptionStore();
@@ -29,29 +28,21 @@ export default function App() {
         const now = dayjs();
         const nextWeek = now.add(7, 'days');
         return subscriptions.filter(sub =>
-            sub.status === 'active' &&
+            sub.status === 'active' && sub.renewalDate &&
             dayjs(sub.renewalDate).isAfter(now) &&
             dayjs(sub.renewalDate).isBefore(nextWeek)
-        ).sort((a, b) => dayjs(a.renewalDate).diff(dayjs(b.renewalDate)));
+        ).sort((a, b) => dayjs(a.renewalDate).diff(dayjs(b.renewalDate)))
+            .map(sub => ({ ...sub, daysLeft: Math.ceil(dayjs(sub.renewalDate).diff(now, 'day', true)) }));
     }, [subscriptions]);
 
     const handleSubscriptionPress = (item: Subscription) => {
         const isExpanding = expandedSubscriptionId !== item.id;
         setExpandedSubscriptionId((currentId) => (currentId === item.id ? null : item.id));
-        posthog.capture(isExpanding ? 'subscription_expanded' : 'subscription_collapsed', {
-            subscription_name: item.name,
-            subscription_id: item.id,
-        });
+        posthog?.capture(isExpanding ? 'subscription_expanded' : 'subscription_collapsed');
     };
 
     const handleCreateSubscription = (newSubscription: Subscription) => {
         addSubscription(newSubscription);
-        posthog.capture('subscription_created', {
-            subscription_name: newSubscription.name,
-            subscription_price: newSubscription.price,
-            subscription_frequency: newSubscription.frequency,
-            subscription_category: newSubscription.category,
-        });
     };
 
     // Get user display name: firstName, fullName, or email
